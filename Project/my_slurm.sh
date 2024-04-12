@@ -10,7 +10,7 @@
 #SBATCH -o data_sys-%A.out                   # Standard output file
 #SBATCH -e data_sys-%A.err                   # Standard error file
 
-# ijob -A ds_6050 -p gpu --gres=gpu:rtx3090:2 -c 2 --mem=16G -t 00:30:00
+# ijob -A ds_6050 -p gpu --gres=gpu:rtx3090:4 -c 10 -t 00:30:00
 module purge
 # Load modules
 module load apptainer/1.2.2 pytorch/2.0.1 java/11 gcc/11.4.0 openmpi/4.1.4 python/3.11.4 spark/3.4.1

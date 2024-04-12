@@ -3,12 +3,23 @@
 import pandas as pd
 import numpy as np
 import time
-from pyspark.sql.functions import when
+from pyspark.sql.functions import when, rand
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+
 from sparknlp.base import DocumentAssembler, Pipeline
 from sparknlp.annotator import (
     UniversalSentenceEncoder,
     SentimentDLApproach
 )
+
+import torch
+
+if torch.cuda.is_available():
+    print("CUDA is available. GPU can be used.")
+    print("Version: ", torch.version.cuda)
+    print("Number of GPUs available: ", torch.cuda.device_count())
+else:
+    print("CUDA is not available. Using CPU instead.")
 
 import sparknlp
 import findspark as fs
@@ -16,25 +27,45 @@ fs.init('/home/jdu5sq/spark-3.4.1-bin-hadoop3')
 fs.find()
 
 print("Import done!")
+data_path = "/home/jdu5sq/Documents/MSDS/DS5110/Project/"
 
-params = {
-    "spark.driver.cores":"4",
-    "spark.driver.memory":"8G",
-    "spark.executor.memory":"8G",
-    "spark.master":"local[4]"
-}
-spark = sparknlp.start(gpu=True, params=params)
+from pyspark.sql import SparkSession
+
+def start_spark_session():
+    spark = SparkSession.builder \
+        .appName("GPU Spark NLP") \
+        .master("local[10]") \
+        .config("spark.driver.memory", "16G") \
+        .config("spark.executor.memory", "12G") \
+        .config("spark.executor.instances", "4") \
+        .config("spark.task.cpus", "1") \
+        .config("spark.task.resource.gpu.amount", "0.25") \
+        .config("spark.executor.resource.gpu.amount", "1") \
+        .config("spark.executor.resource.gpu.discoveryScript", data_path+"/getGpusResources.sh") \
+        .config("spark.driver.resource.gpu.amount", "1") \
+        .config("spark.driver.resource.gpu.discoveryScript", data_path+"/getGpusResources.sh") \
+        .getOrCreate()
+    return spark
+
+spark = start_spark_session()
+sparknlp.start(gpu=True)
 
 print("Spark started.")
 
-data_path = "Documents/MSDS/DS5110/Project/"
-trainDataset = spark.read \
-      .option("header", False) \
-      .csv(data_path+"train.csv")
+print("Starting dataset making...")
 
-header_names = ["label", "title", "text"]
-trainDataset = trainDataset.toDF(*header_names)
-trainDataset = trainDataset.withColumn("label", when(trainDataset["label"] == 2, 1).otherwise(0))
+schema = StructType([
+    StructField("label", IntegerType(), True),
+    StructField("title", StringType(), True),
+    StructField("text", StringType(), True)
+])
+
+trainDataset = spark.read \
+    .option("header", False) \
+    .schema(schema) \
+    .csv(data_path+"debugger_train.csv")
+
+debugDataset = trainDataset.withColumn("label", when(trainDataset["label"] == 2, 1).otherwise(0))
 
 print("Data loaded.")
 
@@ -50,6 +81,8 @@ sentimentdl = SentimentDLApproach() \
     .setInputCols(["sentence_embeddings"]) \
     .setOutputCol("sentiment") \
     .setLabelColumn("label") \
+    .setbatchSize(32) \
+    .setlr(1e-3) \
     .setMaxEpochs(5) \
     .setEnableOutputLogs(True)
 
@@ -67,7 +100,7 @@ print("Pipeline finished!")
 # Start the timer
 start_time = time.time()
 
-pipelineModel = pipeline.fit(trainDataset)
+pipelineModel = pipeline.fit(debugDataset)
 
 print("Model fitted.")
 
