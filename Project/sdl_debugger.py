@@ -39,16 +39,20 @@ def start_spark_session():
         .config("spark.executor.memory", "12G") \
         .config("spark.executor.instances", "4") \
         .config("spark.task.cpus", "1") \
-        .config("spark.task.resource.gpu.amount", "0.25") \
+        .config("spark.task.resource.gpu.amount", "0.5") \
+        .config("spark.executor.cores", "2") \
         .config("spark.executor.resource.gpu.amount", "1") \
         .config("spark.executor.resource.gpu.discoveryScript", data_path+"/getGpusResources.sh") \
         .config("spark.driver.resource.gpu.amount", "1") \
         .config("spark.driver.resource.gpu.discoveryScript", data_path+"/getGpusResources.sh") \
+        .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:4.2.0,com.johnsnowlabs.nlp:spark-nlp-gpu_2.12:4.2.0") \
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+        .config("spark.kryoserializer.buffer.max", "2000M") \
+        .config("spark.driver.maxResultSize", "0") \
         .getOrCreate()
     return spark
 
 spark = start_spark_session()
-sparknlp.start(gpu=True)
 
 print("Spark started.")
 
@@ -69,13 +73,20 @@ debugDataset = trainDataset.withColumn("label", when(trainDataset["label"] == 2,
 
 print("Data loaded.")
 
+# Start the timer
+start_time = time.time()
+
 documentAssembler = DocumentAssembler() \
     .setInputCol("text") \
     .setOutputCol("document")
+print("documentAssembler finished!")
+da_time = time.time() - start_time
 
 useEmbeddings = UniversalSentenceEncoder.pretrained() \
     .setInputCols(["document"]) \
     .setOutputCol("sentence_embeddings")
+print("useEmbeddings finished!")
+ue_time = time.time() - da_time
 
 sentimentdl = SentimentDLApproach() \
     .setInputCols(["sentence_embeddings"]) \
@@ -85,6 +96,8 @@ sentimentdl = SentimentDLApproach() \
     .setlr(1e-3) \
     .setMaxEpochs(5) \
     .setEnableOutputLogs(True)
+print("sentimentdl finished!")
+dla_time = time.time() - ue_time
 
 pipeline = Pipeline() \
     .setStages(
@@ -96,9 +109,7 @@ pipeline = Pipeline() \
     )
 
 print("Pipeline finished!")
-
-# Start the timer
-start_time = time.time()
+pipe_time = time.time() - dla_time
 
 pipelineModel = pipeline.fit(debugDataset)
 
@@ -109,6 +120,10 @@ end_time = time.time()
 
 # Calculate the total time taken
 total_time = end_time - start_time
+print(f"Total DocumentAssembler time: {da_time} seconds")
+print(f"Total UniversalSentenceEncoder time: {ue_time} seconds")
+print(f"Total SentimentDLApproach time: {dla_time} seconds")
+print(f"Total Pipline time: {pip_time} seconds")
 print(f"Total execution time: {total_time} seconds")
 
 # cat ~/annotator_logs/SentimentDLApproach_12faa854e3b3.log
