@@ -23,6 +23,16 @@ from sparknlp.annotator import (
     SentimentDLApproach
 )
 
+import sys
+
+print("Before setting spark home:")
+os.system("echo $SPARK_HOME")
+
+os.environ['SPARK_HOME'] = '/home/jdu5sq/spark-3.4.1-bin-hadoop3'
+
+print("After setting spark home:")
+os.system("echo $SPARK_HOME")
+
 os.system("wget -N https://s3.amazonaws.com/auxdata.johnsnowlabs.com/public/resources/en/spell/words.txt -P /tmp")
 os.system("rm -rf /tmp/sentiment.parquet")
 os.system("wget -N https://s3.amazonaws.com/auxdata.johnsnowlabs.com/public/resources/en/sentiment.parquet.zip -P /tmp")
@@ -30,7 +40,7 @@ os.system("unzip /tmp/sentiment.parquet.zip -d /tmp/")
 
 print("Import and downloads finished.")
 
-spark = sparknlp.start(gpu=True)
+spark = sparknlp.start(gpu=True, memory="32G")
 
 print("Spark initialised.")
 
@@ -45,11 +55,11 @@ schema = StructType([
 trainDataset = spark.read \
     .option("header", False) \
     .schema(schema) \
-    .csv("/home/jdu5sq/Documents/MSDS/DS5110/Project/debugger_train.csv")
+    .csv("/home/jdu5sq/Documents/MSDS/DS5110/Project/train.csv")
 
 print("Finished getting dataset.")
 
-debugDataset = trainDataset.withColumn("label", when(trainDataset["label"] == 2, 1).otherwise(0))
+trainDataset = trainDataset.withColumn("label", when(trainDataset["label"] == 2, 1).otherwise(0))
 
 spark.sparkContext.setLogLevel("ERROR")
 
@@ -87,7 +97,7 @@ print("Pipeline finished!")
 # Start the timer
 start_time = time.time()
 
-pipelineModel = pipeline.fit(debugDataset)
+pipelineModel = pipeline.fit(trainDataset)
 
 print("Model fitted.")
 
@@ -102,7 +112,8 @@ print(f"Total execution time: {total_time} seconds")
 
 print("Starting logs.")
 
-os.system('cat ~/annotator_logs/SentimentDLApproach_12faa854e3b3.log')
+os.system('rm -r ~/annotator_logs/*')
+os.system('cat ~/annotator_logs/SentimentDLApproach_*.log')
 
 print("Logs finished.")
 
